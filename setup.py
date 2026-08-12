@@ -63,17 +63,6 @@ def get_platform():
         raise ValueError("Unsupported platform: {}".format(sys.platform))
 
 
-def get_cuda_bare_metal_version(cuda_dir):
-    raw_output = subprocess.check_output(
-        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
-    )
-    output = raw_output.split()
-    release_idx = output.index("release") + 1
-    bare_metal_version = parse(output[release_idx].split(",")[0])
-
-    return raw_output, bare_metal_version
-
-
 def get_hip_version(rocm_dir):
     hipcc_bin = "hipcc" if rocm_dir is None else os.path.join(rocm_dir, "bin", "hipcc")
     try:
@@ -263,12 +252,9 @@ setup(
             "causal_conv1d.egg-info",
         )
     ),
-    author="Tri Dao",
-    author_email="tri@tridao.me",
-    description="Causal depthwise conv1d in CUDA, with a PyTorch interface",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Dao-AILab/causal-conv1d",
+    url="https://github.com/kw-00/causal-conv1d-modern-rocm",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
