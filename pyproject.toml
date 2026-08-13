@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "causal-conv1d-modern-rocm"
+name = "causal-conv1d"
 version = "1.6.2.post2"
 
 description = "Causal depthwise conv1d with a PyTorch interface. ROCm-compatible"
