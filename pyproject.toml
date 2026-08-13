@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools", "wheel", "torch"]
+requires-python = ">=3.10"
+requires = ["setuptools", "wheel", "torch", "packaging", "ninja"]
 build-backend = "setuptools.build_meta"
 
 
@@ -9,6 +10,8 @@ version = "1.6.2.post2"
 
 description = "Causal depthwise conv1d with a PyTorch interface. ROCm-compatible"
 
+readme = {file = "README.md", content-type = "text/markdown"}
+
 authors = [
     {name = "Tri Dao", email = "tri@tridao.me"},
     {name = "Krzysztof Wójcik", email = "christopher.p.wojcik@gmail.com"},
@@ -17,3 +20,6 @@ authors = [
 maintainers = [
     {name = "Krzysztof Wójcik"},
 ]
+
+[project.urls]
+Repository="https://github.com/kw-00/causal-conv1d-modern-rocm"

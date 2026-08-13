@@ -33,16 +33,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
-PACKAGE_NAME = "causal_conv1d"
-
-BASE_WHEEL_URL = "https://github.com/Dao-AILab/causal-conv1d/releases/download/{tag_name}/{wheel_name}"
-
 # FORCE_BUILD: Force a fresh build locally, instead of attempting to find prebuilt wheels
 # SKIP_CUDA_BUILD: Intended to allow CI to use a simple `python setup.py sdist` run to copy over raw files, without any cuda compilation
 FORCE_BUILD = os.getenv("CAUSAL_CONV1D_FORCE_BUILD", "FALSE") == "TRUE"
 SKIP_CUDA_BUILD = os.getenv("CAUSAL_CONV1D_SKIP_CUDA_BUILD", "FALSE") == "TRUE"
-# For CI, we want the option to build with C++11 ABI since the nvcr images use C++11 ABI
-FORCE_CXX11_ABI = os.getenv("CAUSAL_CONV1D_FORCE_CXX11_ABI", "FALSE") == "TRUE"
 
 
 def get_platform():
@@ -92,20 +86,17 @@ def get_torch_hip_version():
         return None
 
 
-def check_if_hip_home_none(global_option: str) -> None:
+def check_if_hip_home_none() -> None:
     if HIP_HOME is not None:
         return
     # warn instead of error because user could be downloading prebuilt wheels, so hipcc won't be necessary
     # in that case.
     warnings.warn(
-        f"{global_option} was requested, but hipcc was not found.  Are you sure your environment has hipcc available?"
+        f"hipcc was not found.  Are you sure your environment has hipcc available?"
     )
-
 
 cmdclass = {}
 ext_modules = []
-
-
 
 if not SKIP_CUDA_BUILD:
     print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
@@ -114,7 +105,7 @@ if not SKIP_CUDA_BUILD:
 
     cc_flag = []
 
-    check_if_hip_home_none(PACKAGE_NAME)
+    check_if_hip_home_none()
 
     rocm_home = os.getenv("ROCM_PATH")
     _, hip_version = get_hip_version(rocm_home)
@@ -122,16 +113,9 @@ if not SKIP_CUDA_BUILD:
     if HIP_HOME is not None:
         if hip_version < Version("6.0"):
             raise RuntimeError(
-                f"{PACKAGE_NAME} is only supported on ROCm 6.0 and above.  "
-                "Note: make sure HIP has a supported version by running hipcc --version."
+                f"Only ROCm 6.0 and above are supported."
+                " Note: make sure HIP has a supported version by running hipcc --version."
             )
-        if hip_version == Version("6.0"):
-            warnings.warn(
-                f"{PACKAGE_NAME} requires a patch to be applied when running on ROCm 6.0. "
-                "Refer to the README.md for detailed instructions.",
-                UserWarning,
-            )
-
     cc_flag.append("-DBUILD_PYTHON_PACKAGE")
 
     CPP_VERSION=20
@@ -148,98 +132,7 @@ if not SKIP_CUDA_BUILD:
         + cc_flag,
     }
 
-    ext_modules.append(
-        CUDAExtension(
-            name="causal_conv1d_cuda",
-            sources=[
-                "csrc/causal_conv1d.cpp",
-                "csrc/causal_conv1d_fwd.cu",
-                "csrc/causal_conv1d_bwd.cu",
-                "csrc/causal_conv1d_update.cu",
-            ],
-            extra_compile_args=extra_compile_args,
-            include_dirs=[Path(this_dir) / "csrc"],
-        )
-    )
-
-
-def get_package_version():
-    with open(Path(this_dir) / "causal_conv1d" / "__init__.py", "r") as f:
-        version_match = re.search(r"^__version__\s*=\s*(.*)$", f.read(), re.MULTILINE)
-    public_version = ast.literal_eval(version_match.group(1))
-    local_version = os.environ.get("CAUSAL_CONV1D_LOCAL_VERSION")
-    if local_version:
-        return f"{public_version}+{local_version}"
-    else:
-        return str(public_version)
-
-
-def get_wheel_url():
-    # Determine the version numbers that will be used to determine the correct wheel
-    torch_version_raw = parse(torch.__version__)
-
-    # We're using the HIP version used to build torch, not the one currently installed
-    torch_hip_version = get_torch_hip_version()
-    hip_version = f"{torch_hip_version.major}{torch_hip_version.minor}"
-
-    python_version = f"cp{sys.version_info.major}{sys.version_info.minor}"
-    platform_name = get_platform()
-    causal_conv1d_version = get_package_version()
-
-    if os.environ.get("NVIDIA_PRODUCT_NAME", "") == "PyTorch":
-        torch_version = str(os.environ.get("NVIDIA_PYTORCH_VERSION"))
-    else:
-        torch_version = f"{torch_version_raw.major}.{torch_version_raw.minor}"
-
-    cxx11_abi = str(torch._C._GLIBCXX_USE_CXX11_ABI).upper()
-
-    # Determine wheel URL based on CUDA version, torch version, python version and OS
-    wheel_filename = f"{PACKAGE_NAME}-{causal_conv1d_version}+hip{hip_version}torch{torch_version}cxx11abi{cxx11_abi}-{python_version}-{python_version}-{platform_name}.whl"
-
-    wheel_url = BASE_WHEEL_URL.format(
-        tag_name=f"v{causal_conv1d_version}", wheel_name=wheel_filename
-    )
-    return wheel_url, wheel_filename
-
-
-class CachedWheelsCommand(_bdist_wheel):
-    """
-    The CachedWheelsCommand plugs into the default bdist wheel, which is ran by pip when it cannot
-    find an existing wheel (which is currently the case for all installs). We use
-    the environment parameters to detect whether there is already a pre-built version of a compatible
-    wheel available and short-circuits the standard full build pipeline.
-    """
-
-    def run(self):
-        if FORCE_BUILD:
-            return super().run()
-
-        wheel_url, wheel_filename = get_wheel_url()
-        print("Guessing wheel URL: ", wheel_url)
-        try:
-            urllib.request.urlretrieve(wheel_url, wheel_filename)
-
-            # Make the archive
-            # Lifted from the root wheel processing command
-            # https://github.com/pypa/wheel/blob/cf71108ff9f6ffc36978069acb28824b44ae028e/src/wheel/bdist_wheel.py#LL381C9-L381C85
-            if not os.path.exists(self.dist_dir):
-                os.makedirs(self.dist_dir)
-
-            impl_tag, abi_tag, plat_tag = self.get_tag()
-            archive_basename = f"{self.wheel_dist_name}-{impl_tag}-{abi_tag}-{plat_tag}"
-
-            wheel_path = os.path.join(self.dist_dir, archive_basename + ".whl")
-            print("Raw wheel path", wheel_path)
-            shutil.move(wheel_filename, wheel_path)
-        except urllib.error.HTTPError:
-            print("Precompiled wheel not found. Building from source...")
-            # If the wheel could not be downloaded, build from source
-            super().run()
-
-
 setup(
-    name=PACKAGE_NAME,
-    version=get_package_version(),
     packages=find_packages(
         exclude=(
             "build",
@@ -252,8 +145,6 @@ setup(
             "causal_conv1d.egg-info",
         )
     ),
-    long_description=long_description,
-    long_description_content_type="text/markdown",
     url="https://github.com/kw-00/causal-conv1d-modern-rocm",
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -261,15 +152,5 @@ setup(
         "Operating System :: Unix",
     ],
     ext_modules=ext_modules,
-    cmdclass={"bdist_wheel": CachedWheelsCommand, "build_ext": BuildExtension}
-    if ext_modules
-    else {
-        "bdist_wheel": CachedWheelsCommand,
-    },
-    python_requires=">=3.9",
-    install_requires=[
-        "torch",
-        "packaging",
-        "ninja",
-    ],
+    cmdclass={"build_ext": BuildExtension}
 )
